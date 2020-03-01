@@ -1,0 +1,83 @@
+---
+# do_backup.yaml
+
+# Top level variables will be overridden by identically named variables
+# within the hosts definitions.
+logs:
+  level: info    # Could be 'debug', 'info', 'warning', 'error', or 'critical'.
+                 # Each file backup is logged at the 'info' level.
+  dir: bk_logs   # Relative or absolute; files within are named "{host}-{timestamp}.log".
+                 # Logs age out with the corresponding backups.
+
+# target_dir can be an absolute path, or relative to the script's directory.
+target_dir: backups
+
+# excludes: a list of rsync "--exclude=" parameters to apply to every backup
+# (unless overridden by an "excludes" list in the relevant "hosts" definition).
+excludes:
+  - /**/.cache/
+  - /**/.ccache/
+  - /**/cache/
+  - /**/Cache/
+  - /dev/
+  - /proc/
+  - /run/
+  - /sys/
+
+# Some flags to rsync:
+#   -a   short for -r -l -p -t -g -o -D
+#     -r  --recursive
+#     -l  --links
+#     -p  --perms
+#     -t  --times
+#     -g  --group
+#     -o  --owner
+#     -D  --devices and --specials
+#   -H    --hardlinks
+#   -A    --acls
+#   -X    --xattrs
+#   -x    --one-file-system
+#   --del --delete-during; receiver deletes extraneous files from destination dirs
+
+# Choose rsync flags depending on src and dst filesystem types.
+rsync_opt_map:
+  - src_fs_type: ['ext2', 'ext3', 'ext4']
+    dst_fs_type: ['ext4']
+    options: ['-a', '-H', '-A', '-X', '-x', '-v' ]
+
+  - src_fs_type: [ 'fat32', 'ntfs', 'unknown' ]
+    dst_fs_type: ['ext4']
+    options: ['-a', '-H', '-A',       '-x', '-v' ]
+
+max_backups: 24  # older backups get removed
+max_partials: 7  # incrementals between full backups
+uid: root
+
+hosts:
+  tarna:
+      excludes:
+        - /dev/
+        - /proc/
+        - /run/
+        - /sys/
+        - /**/ImapMail/
+        - /smb/todd/trailsong.img.*
+        - /smb/todd/trailsong.tgz
+      data:
+        - src: /home
+          dst:  home
+        - src: /root
+          dst:  root
+        - src: /etc
+          dst:  etc
+        - src: /backups
+          dst:  backups
+        - src: /var/spool/imap
+          dst:  var_spool_imap
+        - src: /var/lib/imap
+          dst:  var_lib_imap
+  lappy:
+    uid: utoddl
+    data:
+      - src: /home/utoddl/src/neg
+        dst:                  neg
