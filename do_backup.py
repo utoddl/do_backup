@@ -35,7 +35,7 @@ def get_fs_type(path):
 
 def get_partials(host, conf):
     partials = 0
-    partials_file = os.path.join(conf['logs']['dir'], host + '-partials')
+    partials_file = os.path.join(conf['logs']['dir'], '.partials')
     if os.path.isfile(partials_file):
         with open(partials_file, "r") as f:
             partials = int(f.readline())
@@ -44,24 +44,21 @@ def get_partials(host, conf):
 
 
 def set_partials(host, conf, partials):
-    partials_file = os.path.join(conf['logs']['dir'], host + '-partials')
-    with open(partials_file, "w") as f:
+    partials_file = os.path.join(conf['logs']['dir'], '.partials')
+    with open(partials_file, "w+") as f:
         f.write("{}\n".format(partials))
     f.close()
     return partials
 
 
-def backup_host(host, conf, app_path, timestamp, dry_run):
+def backup_host(host, conf, timestamp, dry_run):
     bkl = logging.getLogger('bk')
-    if not os.path.isabs(conf['target_dir']):
-        conf['target_dir'] = os.path.join(app_path, conf['target_dir'])
     if os.path.exists(conf['target_dir']):
         if not os.path.isdir(conf['target_dir']):
-            sys.stderr.write("{} is not a directory; exiting.\n".format(conf['target_dir']))
+            bkl.error("{} is not a directory; exiting.\n".format(conf['target_dir']))
             sys.exit(1)
     elif not dry_run:
         os.makedirs(conf['target_dir'], mode=0o777, exist_ok=False)
-        os.chdir(conf['target_dir'])
 
     partials = get_partials(host, conf)
     if partials == 0 or partials % conf['max_partials'] != 0:
@@ -72,15 +69,14 @@ def backup_host(host, conf, app_path, timestamp, dry_run):
     for bk in conf['data']:
         target = os.path.join(conf['target_dir'], timestamp, bk['dst'])
 
-        globstr = os.path.join(conf['target_dir'],'*', bk['dst'])
+        globstr = os.path.join(conf['target_dir'], '*', bk['dst'])
         bkl.debug("globstr: {}".format(globstr))
 
         bkups = glob.glob(globstr)
-        bkl.debug("bkups (unsorted): {}".format(bkups))
         bkups.sort(reverse=True)
         bkl.debug("len(bkups): {}".format(len(bkups)))
 
-        if bktype == "Incremental":
+        if len(bkups) > 0 and bktype == "Incremental":
             lnkdst = ["--link-dest", bkups[0]]
         else:
             lnkdst = [ ]
@@ -92,8 +88,9 @@ def backup_host(host, conf, app_path, timestamp, dry_run):
         if not dry_run:
             dstfstype = get_fs_type(target)
         else:
-            dstfstype = get_fs_type(conf['target_dir'])
+            dstfstype = get_fs_type(os.path.split(conf['target_dir'])[0])
 
+        bkl.debug("src fs type: {}, dst fs type: {}".format(srcfstype, dstfstype))
         rsync = ['rsync']
         opts = 0
         for opt_map in conf['rsync_opt_map']:
@@ -101,46 +98,62 @@ def backup_host(host, conf, app_path, timestamp, dry_run):
                 for opt in opt_map['options']:
                     opts += 1
                     rsync.append(opt)
+                break
+
         if opts == 0:
-            bkl.debug("No rsync options found for {} -> {}; exiting.".format(srcfstype, dstfstype))
+            bkl.error("No rsync options found for {} -> {}; exiting.".format(srcfstype, dstfstype))
             sys.exit(1)
+
         for ex in conf['excludes']:
             rsync.append('--exclude')
             rsync.append(ex)
+
         for ld in lnkdst:
             rsync.append(ld)
+
         rsync.append(bk['src'] + '/' if not bk['src'].endswith('/') else bk['src'])
         rsync.append(target)
+
         bkl.debug(' '.join(rsync))
+
         if not dry_run:
             proc = subprocess.Popen(rsync, stdout=subprocess.PIPE, universal_newlines=True)
             for line in iter(proc.stdout.readline,''):
                 bkl.info(line.rstrip(os.linesep))
 
-    # drwxrwxr-x. 2 utoddl utoddl 4096 Feb 29 18:05 backups/2020-02-29--18:05:12/neg
-    # drwxrwxr-x. 7 utoddl utoddl 4096 Feb 24 20:26 backups/2020-02-29--18:09:12/neg
-    # drwxrwxr-x. 7 utoddl utoddl 4096 Feb 24 20:26 backups/2020-02-29--18:09:24/neg
-    # drwxrwxr-x. 7 utoddl utoddl 4096 Feb 24 20:26 backups/2020-02-29--18:09:41/neg
+    # drwxrwxr-x. 2 utoddl utoddl 4096 Feb 29 18:05 backups/lappy/2020-02-29--18:05:12/neg
+    # drwxrwxr-x. 7 utoddl utoddl 4096 Feb 24 20:26 backups/lappy/2020-02-29--18:09:12/neg
+    # drwxrwxr-x. 7 utoddl utoddl 4096 Feb 24 20:26 backups/lappy/2020-02-29--18:09:24/neg
+    # drwxrwxr-x. 7 utoddl utoddl 4096 Feb 24 20:26 backups/lappy/2020-02-29--18:09:41/neg
     # [utoddl@lappy do_backup]$ ls -ld bk_logs/*
     # total 1148
-    # -rw-rw-r--. 1 utoddl utoddl    150 Feb 29 17:25 bk_logs/lappy-2020-02-29--17:25:16
-    # -rw-rw-r--. 1 utoddl utoddl    150 Feb 29 17:30 bk_logs/lappy-2020-02-29--17:30:24
-    # -rw-rw-r--. 1 utoddl utoddl    150 Feb 29 17:31 bk_logs/lappy-2020-02-29--17:31:02
+    # -rw-rw-r--. 1 utoddl utoddl    150 Feb 29 17:25 bk_logs/lappy/2020-02-29--17:25:16
+    # -rw-rw-r--. 1 utoddl utoddl    150 Feb 29 17:30 bk_logs/lappy/2020-02-29--17:30:24
+    # -rw-rw-r--. 1 utoddl utoddl    150 Feb 29 17:31 bk_logs/lappy/2020-02-29--17:31:02
 
-    # prune extra 'backups/<timestamp/' directories,
-    # then prune any 'bk_logs/<host>-<timestamp>.log' files that don't match a remaining directory.
-    globstr = os.path.join(conf['target_dir'],'*')
+    # prune extra 'backups/{host}/<timestamp>' directories,
+    # then prune any 'bk_logs/{host}/<timestamp>.log' files that don't match a remaining directory.
+    globstr = os.path.join(conf['target_dir'], '*')
     bkdirs = [d for d in glob.glob(globstr)
               if os.path.isdir(d) and re.search('/\d\d\d\d-\d\d-\d\d--\d\d:\d\d:\d\d', d)]
-    bkdirs.sort(reverse=True)
+    bkdirs.sort()
     while len(bkdirs) > conf['max_backups']:
-        bkl.info('Removing backup directory {}'.format(bkdirs[-1]))
-        if not dry_run:
-            shutil.rmtree(bkdirs[-1], ignore_errors=True)
-        bkdirs.pop()
+        runs_left = conf['max_tail']
+        to_delete = []
+        for bk in range(0, len(bkdirs)):
+            if runs_left > 0 and bk % conf['max_tail'] == 0:
+                to_delete.append(bk)
+                runs_left -= 1
+        while len(to_delete) > 0:
+            bk = to_delete.pop()        
+            bkl.info('Removing backup directory #{}: {}'.format(bk, bkdirs[bk]))
+            if not dry_run:
+                shutil.rmtree(bkdirs[bk], ignore_errors=True)
+            bkdirs.pop(bk)
+
     bktimestamps = [re.sub('.*(\d\d\d\d-\d\d-\d\d--\d\d:\d\d:\d\d).*', '\\1', d) for d in bkdirs]
     bkl.debug('timestamps: {}'.format(bktimestamps))
-    globstr = os.path.join(conf['logs']['dir'], host + '-*')
+    globstr = os.path.join(conf['logs']['dir'], '*')
     bk_logs = [f for f in glob.glob(globstr)
                if os.path.isfile(f) and re.search('/' + host + '-\d\d\d\d-\d\d-\d\d--\d\d:\d\d:\d\d', f)]
     bk_logs.sort()
@@ -191,6 +204,8 @@ def main():
         config['max_backups'] = 4
     if 'max_partials' not in config:
         config['max_partials'] = 4
+    if 'max_tail' not in config:
+        config['max_tail'] = 1
     if 'hosts' not in config:
         config['hosts'] = {}
     if 'logs' not in config:
@@ -211,12 +226,30 @@ def main():
         print("Host '{}' is not configured in '{}'; exiting.".format(platform.node(), app_conf), file=sys.stderr)
         sys.exit(1)
 
-    for override in ['rsync_opt_map', 'excludes', 'uid', 'target_dir', 'max_backups', 'max_partials', 'logs']:
+    for override in ['rsync_opt_map', 'excludes', 'uid', 'target_dir', 'max_backups', 'max_partials', 'max_tail', 'logs']:
         if override in config and override not in config['hosts'][host]:
             config['hosts'][host][override] = config[override]
 
+    if int(config['hosts'][host]['max_tail']) * int(config['hosts'][host]['max_tail']) > int(config['hosts'][host]['max_backups']):
+        print("Host '{}' max_tail ({}) is too large for max_backups ({}); exiting.".format(host, config['hosts'][host]['max_tail'], config['hosts'][host]['max_backups']), file=sys.stderr)
+        sys.exit(1)
+
+    # Make host's logs dir and target_dir absolute paths.
+    if not os.path.isabs(config['hosts'][host]['logs']['dir']):
+        config['hosts'][host]['logs']['dir'] = os.path.join(app_path, config['hosts'][host]['logs']['dir'])
+
+    if not os.path.isabs(config['hosts'][host]['target_dir']):
+        config['hosts'][host]['target_dir']= os.path.join(app_path, config['hosts'][host]['target_dir'])
+
+    # Ensure host's logs dir and target_dir end with '/{host}'
+    if not config['hosts'][host]['logs']['dir'].endswith(host):
+        config['hosts'][host]['logs']['dir'] = os.path.join(config['hosts'][host]['logs']['dir'], host)
+
+    if not config['hosts'][host]['target_dir'].endswith(host):
+        config['hosts'][host]['target_dir'] = os.path.join(config['hosts'][host]['target_dir'], host)
+
     if args.debug:
-        print("{}".format(pp.pformat(config['hosts'][host])))
+        print("Configuration for host '{}'\n{}".format(host, pp.pformat(config['hosts'][host])))
 
     euid = pwd.getpwuid(os.geteuid())
     if config['hosts'][host]['uid'] != euid.pw_name:
@@ -249,7 +282,7 @@ def main():
     if not args.dry_run:
         logger.addHandler(fh)
 
-    backup_host(host, config['hosts'][host], app_path, timestamp, args.dry_run)
+    backup_host(host, config['hosts'][host], timestamp, args.dry_run)
 
 if __name__ == "__main__":
     if sys.version_info < (3,):

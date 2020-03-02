@@ -6,11 +6,15 @@
 logs:
   level: info    # Could be 'debug', 'info', 'warning', 'error', or 'critical'.
                  # Each file backup is logged at the 'info' level.
-  dir: bk_logs   # Relative or absolute; files within are named "{host}-{timestamp}.log".
+  dir: bk_logs   # Relative or absolute; files within are named "{host}/{timestamp}.log".
                  # Logs age out with the corresponding backups.
 
 # target_dir can be an absolute path, or relative to the script's directory.
 target_dir: backups
+
+max_backups: 17  # older backups get removed
+max_partials: 5  # incrementals between full backups
+max_tail: 4      # controls how older backups are removed.
 
 # excludes: a list of rsync "--exclude=" parameters to apply to every backup
 # (unless overridden by an "excludes" list in the relevant "hosts" definition).
@@ -40,17 +44,17 @@ excludes:
 #   --del --delete-during; receiver deletes extraneous files from destination dirs
 
 # Choose rsync flags depending on src and dst filesystem types.
+# The first entry that matches both src and dst will be used; subsequent
+# entries will be ignored.
 rsync_opt_map:
   - src_fs_type: ['ext2', 'ext3', 'ext4']
     dst_fs_type: ['ext4']
     options: ['-a', '-H', '-A', '-X', '-x', '-v' ]
 
-  - src_fs_type: [ 'fat32', 'ntfs', 'unknown' ]
-    dst_fs_type: ['ext4']
+  - src_fs_type: [ 'fat32', 'ntfs', 'unknown', 'ext2', 'ext3', 'ext4' ]
+    dst_fs_type: ['ext4', 'tmpfs']
     options: ['-a', '-H', '-A',       '-x', '-v' ]
 
-max_backups: 24  # older backups get removed
-max_partials: 7  # incrementals between full backups
 uid: root
 
 hosts:
