@@ -11,8 +11,8 @@ and does either an incremental or full backup, depending on the
 threshholds you've set for each machine. Older backups and their log
 files get pruned once you've reached your configured limit.
 
-_This script was written after the demise python2 and is unapologetically
-python3-only._
+_This script was written after the demise of python2 and is
+unapologetically python3-only._
 
 ```
 [utoddl@lappy do_backup]$ ./do_backup.py --help
@@ -47,10 +47,10 @@ The log level could be 'debug', 'info', 'warning', 'error', or
 'critical', but in practice only 'debug' and 'info' are useful. `dir`
 is either an absolute or relative (to the script) path to a directory
 to put individual logs of each backup run. This doesn't define the file
-names; they will be named "{host}-{timestamp}.log" within the
-directory. In addition to the logs, a file named "{host}-partials" will
+names; they will be named `{host}/{timestamp}.log` within the
+directory. In addition to the logs, a file named `{host}/.partials` will
 be created which records how many partial or incremental backups have
-been taken for a give host since the last full backup. These backup log
+been taken for a given host since the last full backup. These backup log
 files are deleted when their corresponding backups are removed.
 
 ### target_dir
@@ -72,9 +72,9 @@ After taking the `max_backups`+1 backups, `max_tail` backups are
 deleted along with their corresponding log files. `max_tail` defaults
 to 1, but its square should always be less than `max_backups`.
 Given the example above, lets call the backups `A` through `R`, where
-`A` is the oldest backup. `R` is the 18th, which is one greater than
-`max_backups`, so we delete `max_tail` older backups, selecting the
-first in each run on `max_tail` backups. Here are two examples showing
+`A` is the oldest backup and `R` is the 18th, which is one greater than
+`max_backups`, so we select `max_tail` older backups, deleting the
+first in each run of `max_tail` backups. Here are two examples showing
 the remaining backups after `max_backups` is exceeded.
 ```
                max_tail=3                             max_tail=4                           
@@ -103,7 +103,7 @@ the remaining backups after `max_backups` is exceeded.
    becomes:    T  W  Za cdefghijklmnopqrst             S   W   a   e  hi  lmn pqrst
 ```
 So `max_tail` says not only how many old backups to delete, but also
-to delete the first in each run of `max_tail` oldest backups.
+to delete the first in each run of `max_tail` old backups.
 
 ### Excludes
 ```
@@ -122,6 +122,19 @@ the `rsync` man pages.
 
 ### Rsync Flags Based on Src and Dst Filesystem Type
 ```
+# Some options to rsync:
+#   -a   short for -r -l -p -t -g -o -D
+#     -r  --recursive
+#     -l  --links
+#     -p  --perms
+#     -t  --times
+#     -g  --group
+#     -o  --owner
+#     -D  --devices and --specials
+#   -H    --hardlinks
+#   -A    --acls
+#   -X    --xattrs
+#   -x    --one-file-system
 rsync_opt_map:
   - src_fs_type: ['ext2', 'ext3', 'ext4']
     dst_fs_type: ['ext4']
@@ -131,22 +144,24 @@ rsync_opt_map:
     dst_fs_type: ['ext4', 'tmpfs']
     options: ['-a', '-H', '-A',       '-x', '-v' ]
 ```
-The `findmnt` program is used to determine the filesystem types of both the source
-and destination of the `rsync` command. The `options` from the first `rsync_opt_map`
-entry that matches both filesystem types are used. If no matching entries are found,
-an error is reported and the script terminates.
+The `findmnt` program is used to determine the filesystem types of both
+the source and destination of the `rsync` command. If the type cannot
+be determined, it uses `unknown`. The `options` from the first
+`rsync_opt_map` entry that matches both filesystem types are used. If
+no matching entries are found, an error is reported and the script
+terminates.
 
 ### UID
 ```
 uid: root
 ```
-The script checks the name of the user it's running as, and exits with an error
-if there's a mismatch.
+The script checks the name of the user it's running as, and exits with
+an error if there's a mismatch.
 
 ### Hosts Specifications
 ```
 hosts:
-  bingo:        # the local host name
+  bingo:        # a local host name
       excludes:
         - /dev/
         - /proc/
